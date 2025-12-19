@@ -2,7 +2,10 @@ const std = @import("std");
 
 const zd = @import("zd.zig");
 
-fn runCommand(allocator: std.mem.Allocator, argv: []const []const u8) ![]const u8 {
+fn runCommand(allocator: std.mem.Allocator, argv: []const []const u8) !struct {
+    result_text: []const u8,
+    term: u1,
+} {
     var process: std.process.Child = .init(argv, allocator);
     errdefer _ = process.wait() catch {};
     process.stdout_behavior = .Pipe;
@@ -14,10 +17,10 @@ fn runCommand(allocator: std.mem.Allocator, argv: []const []const u8) ![]const u
     const ret = try stdout_reader.interface.allocRemaining(allocator, .unlimited);
 
     const term = try process.wait();
-    return switch (term.Exited) {
-        0 => ret,
-        1 => &.{},
-        else => error.Fail,
+    if (term.Exited > 1) return error.Fail;
+    return .{
+        .result_text = ret,
+        .term = @intCast(term.Exited),
     };
 }
 
@@ -40,7 +43,8 @@ pub fn openDialog(
     if (default_path) |name|
         try args.append(allocator, try std.fmt.allocPrint(allocator, "--filename={s}", .{name}));
 
-    const output = std.mem.trimEnd(u8, try runCommand(allocator, args.items), "\n");
+    const res = try runCommand(allocator, args.items);
+    const output = std.mem.trimEnd(u8, res.result_text, "\n");
     if (!multiple_selection) return try child_allocator.dupe(u8, output);
 
     var result: std.ArrayList([]const u8) = .{};
@@ -65,7 +69,43 @@ pub fn saveDialog(
     if (default_path) |name|
         try args.append(allocator, try std.fmt.allocPrint(allocator, "--filename={s}", .{name}));
 
-    return try child_allocator.dupe(u8, std.mem.trimEnd(u8, try runCommand(allocator, args.items), "\n"));
+    const res = try runCommand(allocator, args.items);
+    return try child_allocator.dupe(u8, std.mem.trimEnd(u8, res.result_text, "\n"));
+}
+
+pub fn message(
+    allocator: std.mem.Allocator,
+    level: zd.MessageLevel,
+    buttons: zd.MessageButtons,
+    text: []const u8,
+    title: []const u8,
+) !bool {
+    var args: std.ArrayList([]const u8) = .{};
+
+    try args.appendSlice(allocator, &.{
+        "zenity",
+        "--width=350",
+        try std.fmt.allocPrint(allocator, "--title={s}", .{title}),
+        try std.fmt.allocPrint(allocator, "--text={s}", .{text}),
+    });
+    const icon = switch (level) {
+        .info => "--icon=info",
+        .warn => "--icon=warning",
+        .err => "--icon=error",
+    };
+    try args.appendSlice(allocator, switch (buttons) {
+        .yes_no => &.{ icon, "--question", "--ok-label=Yes", "--cancel-label=No" },
+        .ok_cancel => &.{ icon, "--question", "--ok-label=Ok", "--cancel-label=Cancel" },
+        .ok => &.{},
+    });
+    if (buttons == .ok) try args.append(allocator, switch (level) {
+        .info => "--info",
+        .warn => "--warning",
+        .err => "--error",
+    });
+
+    const res = try runCommand(allocator, args.items);
+    return res.term == 0;
 }
 
 fn appendFilterArgs(

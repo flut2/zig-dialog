@@ -168,8 +168,40 @@ pub fn saveDialog(
     return try std.unicode.wtf16LeToWtf8Alloc(child_allocator, std.mem.span(file_path));
 }
 
+pub fn message(
+    allocator: std.mem.Allocator,
+    level: zd.MessageLevel,
+    buttons: zd.MessageButtons,
+    text: []const u8,
+    title: []const u8,
+) !bool {
+    var style: win32.MESSAGEBOX_STYLE = .{};
+    switch (level) {
+        .info => style.ICONASTERISK = 1,
+        .warn => {
+            style.ICONHAND = 1;
+            style.ICONQUESTION = 1;
+        },
+        .err => style.ICONHAND = 1,
+    }
+
+    switch (buttons) {
+        .yes_no => style.YESNO = 1,
+        .ok_cancel => style.OKCANCEL = 1,
+        .ok => {},
+    }
+
+    const res = win32.MessageBoxW(
+        win32.GetActiveWindow(),
+        try std.unicode.wtf8ToWtf16LeAllocZ(allocator, text),
+        try std.unicode.wtf8ToWtf16LeAllocZ(allocator, title),
+        style,
+    );
+    return res == .OK or res == .YES;
+}
+
 const UnsignedHRESULT = std.meta.Int(.unsigned, @typeInfo(win32.HRESULT).int.bits);
-pub fn HRESULT_FROM_WIN32(err: win32.WIN32_ERROR) win32.HRESULT {
+fn HRESULT_FROM_WIN32(err: win32.WIN32_ERROR) win32.HRESULT {
     const hr: UnsignedHRESULT = (@as(UnsignedHRESULT, @intFromEnum(err)) & 0x0000FFFF) |
         (@as(UnsignedHRESULT, @intFromEnum(win32.FACILITY_WIN32)) << 16) |
         @as(UnsignedHRESULT, 0x80000000);

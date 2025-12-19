@@ -7,6 +7,8 @@ const gtk = @import("gtk_impl.zig");
 const win = @import("win_impl.zig");
 const zenity = @import("zenity_impl.zig");
 
+pub const MessageLevel = enum { info, warn, err };
+pub const MessageButtons = enum { yes_no, ok_cancel, ok };
 pub const DialogType = enum { file, directory };
 pub const Filter = struct {
     name: []const u8,
@@ -110,8 +112,8 @@ pub fn openDialog(
     allocator: std.mem.Allocator,
     dialog_type: DialogType,
     filters: []const Filter,
-    /// The title will be set to `Select Folder` or `Select File`
-    /// (depending on `dialog_type`) if set to null
+    /// The title will be set to `Select Folder(s)` or `Select File(s)`
+    /// (depending on `dialog_type` and `multiple_selection`) if set to null
     title: ?[]const u8,
     default_path: ?[]const u8,
 ) !if (multiple_selection) []const []const u8 else []const u8 {
@@ -168,6 +170,52 @@ pub fn saveDialog(
 
     return switch (builtin.os.tag) {
         .windows => try win.saveDialog(arena_allocator, allocator, mod.filters, mod.title, mod.default_path),
+        else => @compileError("Unsupported OS"),
+    };
+}
+
+/// Opens a message box of the given level.
+/// Returns true if execution was successful and either `Ok` or `Yes` were clicked.
+/// Note: Windows assumes input strings to be WTF8.
+pub fn message(
+    allocator: std.mem.Allocator,
+    level: MessageLevel,
+    buttons: MessageButtons,
+    text: []const u8,
+    /// The title will be set to `Info`, `Warning` or `Error` if set to null,
+    /// depending on `level`.
+    title: ?[]const u8,
+) !bool {
+    var arena: std.heap.ArenaAllocator = .init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const requires_sentinel = comptime isLinuxOrBsd() and options.use_gtk;
+
+    const unwrapped_title = title orelse switch (level) {
+        .info => "Info",
+        .warn => "Warning",
+        .err => "Error",
+    };
+    const mod_title = if (requires_sentinel)
+        try std.fmt.allocPrintSentinel(arena_allocator, "{s}", .{unwrapped_title}, 0)
+    else
+        unwrapped_title;
+
+    const mod_text = if (requires_sentinel)
+        try std.fmt.allocPrintSentinel(arena_allocator, "{s}", .{text}, 0)
+    else
+        text;
+
+    if (comptime isLinuxOrBsd()) {
+        return if (options.use_gtk)
+            try gtk.message(level, buttons, mod_text, mod_title)
+        else
+            try zenity.message(arena_allocator, level, buttons, mod_text, mod_title);
+    }
+
+    return switch (builtin.os.tag) {
+        .windows => try win.message(arena_allocator, level, buttons, mod_text, mod_title),
         else => @compileError("Unsupported OS"),
     };
 }

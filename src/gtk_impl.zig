@@ -25,23 +25,36 @@ const ResponseType = enum(c_int) {
     _,
 };
 
+pub const DialogFlags = packed struct(c_uint) {
+    modal: bool = false,
+    destroy_with_parent: bool = false,
+    use_header_bar: bool = false,
+    padding: u29 = 0,
+};
+
+pub const MessageType = enum(c_int) {
+    info = 0,
+    warning = 1,
+    question = 2,
+    @"error" = 3,
+    other = 4,
+    _,
+};
+
+pub const ButtonsType = enum(c_int) {
+    none = 0,
+    ok = 1,
+    close = 2,
+    cancel = 3,
+    yes_no = 4,
+    ok_cancel = 5,
+    _,
+};
+
 pub const SList = extern struct {
     f_data: ?*anyopaque,
     f_next: ?*SList,
 };
-
-fn gtkOpenDialog(title: [:0]const u8, dialog_type: zd.DialogType) *anyopaque {
-    return gtk_file_chooser_dialog_new(
-        title,
-        null,
-        if (dialog_type == .directory) .select_folder else .open,
-        "_Cancel",
-        @intFromEnum(ResponseType.cancel),
-        "_Open",
-        @intFromEnum(ResponseType.accept),
-        @as(usize, 0),
-    );
-}
 
 fn appendFileFilters(dialog: *anyopaque, filters: []const zd.SentinelFilter) void {
     for (filters) |f| {
@@ -68,9 +81,17 @@ pub fn openDialog(
 ) !if (multiple_selection) []const []const u8 else []const u8 {
     if (gtk_init_check(null, null) == 0) return error.InitializationFailed;
 
-    const dialog = gtkOpenDialog(title, dialog_type);
+    const dialog = gtk_file_chooser_dialog_new(
+        title,
+        null,
+        if (dialog_type == .directory) .select_folder else .open,
+        "_Cancel",
+        @intFromEnum(ResponseType.cancel),
+        "_Open",
+        @intFromEnum(ResponseType.accept),
+        @as(usize, 0),
+    );
     defer {
-        wait();
         gtk_widget_destroy(dialog);
         wait();
     }
@@ -120,16 +141,16 @@ pub fn saveDialog(
         .save,
         "_Cancel",
         @intFromEnum(ResponseType.cancel),
-        "_Open",
+        "_Save",
         @intFromEnum(ResponseType.accept),
         @as(usize, 0),
     );
     defer {
-        wait();
         gtk_widget_destroy(dialog);
         wait();
     }
 
+    gtk_file_chooser_set_do_overwrite_confirmation(dialog, 1);
     if (default_path) |path| _ = gtk_file_chooser_set_current_folder(dialog, path);
     appendFileFilters(dialog, filters);
 
@@ -139,6 +160,45 @@ pub fn saveDialog(
     const path = gtk_file_chooser_get_filename(dialog) orelse return &.{};
     defer g_free(path);
     return child_allocator.dupe(u8, std.mem.span(path));
+}
+
+pub fn message(
+    level: zd.MessageLevel,
+    buttons: zd.MessageButtons,
+    text: [:0]const u8,
+    title: [:0]const u8,
+) !bool {
+    if (gtk_init_check(null, null) == 0) return error.InitializationFailed;
+
+    const msg_type: MessageType = switch (level) {
+        .info => .info,
+        .warn => .warning,
+        .err => .@"error",
+    };
+
+    const btn_type: ButtonsType = switch (buttons) {
+        .yes_no => .yes_no,
+        .ok_cancel => .ok_cancel,
+        .ok => .ok,
+    };
+
+    const dialog = gtk_message_dialog_new(
+        null,
+        .{ .modal = true, .destroy_with_parent = true },
+        msg_type,
+        btn_type,
+        "%s",
+        text.ptr,
+    );
+    defer {
+        gtk_widget_destroy(dialog);
+        wait();
+    }
+
+    gtk_window_set_title(dialog, title);
+
+    const run_res = gtk_dialog_run(dialog);
+    return run_res == @intFromEnum(ResponseType.ok) or run_res == @intFromEnum(ResponseType.yes);
 }
 
 extern fn gtk_init_check(p_argc: ?*c_int, p_argv: ?*[*][*:0]u8) c_int;
@@ -161,7 +221,18 @@ extern fn gtk_file_chooser_add_filter(p_chooser: *anyopaque, p_filter: *anyopaqu
 extern fn gtk_file_chooser_set_current_folder(p_chooser: *anyopaque, p_filename: [*:0]const u8) c_int;
 extern fn gtk_file_chooser_get_filename(p_chooser: *anyopaque) ?[*:0]u8;
 extern fn gtk_file_chooser_get_filenames(p_chooser: *anyopaque) *SList;
+extern fn gtk_file_chooser_set_do_overwrite_confirmation(p_chooser: *anyopaque, p_do_overwrite_confirmation: c_int) void;
 
+extern fn gtk_message_dialog_new(
+    p_parent: ?*anyopaque,
+    p_flags: DialogFlags,
+    p_type: MessageType,
+    p_buttons: ButtonsType,
+    p_message_format: ?[*:0]const u8,
+    ...,
+) *anyopaque;
+
+extern fn gtk_window_set_title(p_window: *anyopaque, p_title: [*:0]const u8) void;
 extern fn gtk_dialog_run(p_dialog: *anyopaque) c_int;
 extern fn gtk_widget_destroy(p_widget: *anyopaque) void;
 

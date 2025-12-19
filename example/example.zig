@@ -29,4 +29,8 @@ pub fn main() !void {
     std.log.err("Multi open dialog paths: [", .{});
     for (multi_path) |path| std.log.err("  {s}", .{path});
     std.log.err("];", .{});
+
+    std.log.err("Info dialog result: {}", .{try zd.message(allocator, .info, .yes_no, "Info dialog", "Info Title")});
+    std.log.err("Warning dialog result: {}", .{try zd.message(allocator, .warn, .ok_cancel, "Warning dialog", "Warning Title")});
+    std.log.err("Error dialog result: {}", .{try zd.message(allocator, .err, .ok, "Error dialog", "Error Title")});
 }
