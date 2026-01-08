@@ -8,7 +8,7 @@ Supported features:
 - Input
 - Clipboard
 - Cursors
-- Vulkan WSI (use `-Dvulkan_support=true`, example implementation over at [Eclipse](https://github.com/flut2/eclipse/tree/windy))
+- Vulkan WSI (use `-Dvulkan_support=true`, example implementation over at [Eclipse](https://github.com/flut2/eclipse))
 - Dialogs (file, color, message)
 
 Supported OSes:
