@@ -55,10 +55,12 @@ pub fn init(allocator: std.mem.Allocator, clip_buf: []u8) !void {
 
 pub fn deinit() void {
     const allocator = windy_allocator orelse noinit();
-    clipboard_window.destroy();
-    wind_ns.deinit();
+
+    var wind_iter = window_map.valueIterator();
+    while (wind_iter.next()) |wind| wind.destroy();
     window_map.deinit(allocator);
 
+    wind_ns.deinit();
     if (options.vulkan_support) vulkan_dyn_lib.close();
 }
 
@@ -75,20 +77,30 @@ pub fn waitEvent() !void {
     try wind_ns.waitEvent();
 }
 
-/// Note: This polls events until the clipboard string is dispatched on X11.
-/// If this is a problem, wrap it in `io.async()` or similar once they're available.
+/// Notes:
+/// - This polls events until the clipboard string is dispatched on X11.
+/// - This attempts to open the clipboard 5 times on Windows with a 2 ms sleep in between,
+/// as the clipboard could be in use by other programs.
+///
+/// If these are a problem, wrap it in `io.async()` or similar once they're available.
 pub fn getClipboard() ![]const u8 {
     return try wind_ns.getClipboard();
 }
 
+/// Note: This attempts to open the clipboard 5 times on Windows with a 2 ms sleep in between,
+/// as the clipboard could be in use by other programs.
+///
+/// If this is a problem, wrap it in `io.async()` or similar once they're available.
 pub fn setClipboard(new_buf: []const u8) !void {
     try wind_ns.setClipboard(new_buf);
 }
 
 pub fn vulkanProcAddr(comptime vk: type, _: vk.Instance, name: [*:0]const u8) vk.PfnVoidFunction {
+    if (!options.vulkan_support) @compileError("Please enable Vulkan support with `-Dvulkan_support=true`");
     return vulkan_dyn_lib.lookup(vk.PfnVoidFunction, std.mem.span(name)) orelse null;
 }
 
+/// This can be called without `-Dvulkan_support=true` if you wish to do so.
 pub fn vulkanExts() []const [*:0]const u8 {
     return wind_ns.vulkanExts();
 }
@@ -238,12 +250,23 @@ pub const Window = struct {
                 struct {}
             else
                 struct {
-                    event_mask_list: c_int = 0,
+                    event_mask_list: i32 = 0,
                     size_hints: wind_ns.SizeHints = .{},
                 };
         }
 
-        return struct {};
+        return switch (builtin.os.tag) {
+            .windows => struct {
+                const win32 = @import("win32").ui.windows_and_messaging;
+
+                style: win32.WINDOW_STYLE = .{},
+                ex_style: win32.WINDOW_EX_STYLE = .{},
+                surrogate: u16 = 0,
+                cursor: ?Cursor = null,
+                mods: Mods = .{},
+            },
+            else => @compileError("Unsupported OS"),
+        };
     }
 
     id: Id,
@@ -273,8 +296,8 @@ pub const Window = struct {
         }
     }
 
+    /// This can be called without `-Dvulkan_support=true` if you wish to do so.
     pub fn createSurface(self: Window, comptime vk: type, inst: vk.InstanceProxy) !vk.SurfaceKHR {
-        if (!options.vulkan_support) @compileError("Please enable Vulkan support with `-Dvulkan_support=true`");
         return try wind_ns.createSurface(vk, self, inst);
     }
 
@@ -283,7 +306,7 @@ pub const Window = struct {
         try wind_ns.setTitle(allocator, self.id, title);
     }
 
-    pub fn setCursor(self: Window, cursor: Cursor) !void {
+    pub fn setCursor(self: *Window, cursor: Cursor) !void {
         if (windy_allocator == null) noinit();
         try wind_ns.setCursor(self, cursor);
     }
@@ -321,50 +344,59 @@ pub const Window = struct {
     pub fn registerRefreshCb(self: *Window, cb: ?refreshCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.refresh = cb;
-        try wind_ns.registerRefreshCb(self, cb != null);
+        // Registrations are only required with XCB for now
+        if (std.meta.hasFn(wind_ns, "registerRefreshCb"))
+            try wind_ns.registerRefreshCb(self, cb != null);
     }
 
     pub fn registerResizeCb(self: *Window, cb: ?resizeCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.resize = cb;
-        try wind_ns.registerConfigure(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerConfigure"))
+            try wind_ns.registerConfigure(self, cb != null);
     }
 
     pub fn registerMoveCb(self: *Window, cb: ?moveCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.move = cb;
-        try wind_ns.registerConfigure(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerConfigure"))
+            try wind_ns.registerConfigure(self, cb != null);
     }
 
     pub fn registerKeyCb(self: *Window, cb: ?keyCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.key = cb;
-        try wind_ns.registerKeyCb(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerKeyCb"))
+            try wind_ns.registerKeyCb(self, cb != null);
     }
 
     pub fn registerCharCb(self: *Window, cb: ?charCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.char = cb;
-        // This uses key events, the only difference is the way the callbacks return data
-        try wind_ns.registerKeyCb(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerKeyCb"))
+            // This uses key events, the only difference is the way the callbacks return data
+            try wind_ns.registerKeyCb(self, cb != null);
     }
 
     pub fn registerMouseCb(self: *Window, cb: ?mouseCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.mouse = cb;
-        try wind_ns.registerMouseCb(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerMouseCb"))
+            try wind_ns.registerMouseCb(self, cb != null);
     }
 
     pub fn registerMouseMoveCb(self: *Window, cb: ?mouseMoveCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.mouseMove = cb;
-        try wind_ns.registerMouseMoveCb(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerMouseMoveCb"))
+            try wind_ns.registerMouseMoveCb(self, cb != null);
     }
 
     pub fn registerScrollCb(self: *Window, cb: ?scrollCallback) !void {
         if (windy_allocator == null) noinit();
         self.callbacks.scroll = cb;
-        try wind_ns.registerScrollCb(self, cb != null);
+        if (std.meta.hasFn(wind_ns, "registerScrollCb"))
+            try wind_ns.registerScrollCb(self, cb != null);
     }
 };
 
@@ -413,10 +445,10 @@ pub const refreshCallback = *const fn (wind: *Window) void;
 pub const resizeCallback = *const fn (wind: *Window, w: u16, h: u16) void;
 pub const moveCallback = *const fn (wind: *Window, x: i16, y: i16) void;
 pub const keyCallback = *const fn (wind: *Window, state: PressState, key: Key, mods: Mods) void;
-pub const charCallback = *const fn (wind: *Window, state: PressState, char: u21, mods: Mods) void;
+pub const charCallback = *const fn (wind: *Window, char: u21, mods: Mods) void;
 pub const mouseCallback = *const fn (wind: *Window, state: PressState, mouse: MouseButton, x: i16, y: i16, mods: Mods) void;
 pub const mouseMoveCallback = *const fn (wind: *Window, x: i16, y: i16, mods: Mods) void;
-pub const scrollCallback = *const fn (wind: *Window, x: f64, y: f64, mods: Mods) void;
+pub const scrollCallback = *const fn (wind: *Window, x: f32, y: f32, mods: Mods) void;
 
 pub const Callbacks = struct {
     refresh: ?refreshCallback = null,

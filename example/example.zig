@@ -3,8 +3,6 @@ const std = @import("std");
 const stbi = @import("stbi");
 const windy = @import("windy");
 
-const cursor = @embedFile("cursor.png");
-
 fn resizeCb(_: *windy.Window, w: u16, h: u16) void {
     std.log.info("Resized to {}x{}", .{ w, h });
 }
@@ -17,15 +15,15 @@ fn keyCb(_: *windy.Window, state: windy.PressState, key: windy.Key, mods: windy.
     std.log.info("Key {} {}, mods: {}", .{ key, state, mods });
 }
 
-fn charCb(_: *windy.Window, state: windy.PressState, char: u21, mods: windy.Mods) void {
-    std.log.info("Char {u} {}, mods: {}", .{ char, state, mods });
+fn charCb(_: *windy.Window, char: u21, mods: windy.Mods) void {
+    std.log.info("Char {u} pressed, mods: {}", .{ char, mods });
 }
 
 fn mouseCb(_: *windy.Window, state: windy.PressState, mouse: windy.MouseButton, x: i16, y: i16, mods: windy.Mods) void {
     std.log.info("Mouse {} {} at x={} y={}, mods: {}", .{ mouse, state, x, y, mods });
 }
 
-fn scrollCb(_: *windy.Window, delta_x: f64, delta_y: f64, mods: windy.Mods) void {
+fn scrollCb(_: *windy.Window, delta_x: f32, delta_y: f32, mods: windy.Mods) void {
     std.log.info("Mouse scroll with x={} y={}, mods: {}", .{ delta_x, delta_y, mods });
 }
 
@@ -37,7 +35,7 @@ pub fn main() !void {
     stbi.init(allocator);
     defer stbi.deinit();
 
-    var cursor_image: stbi.Image = try .loadFromMemory(cursor, 4);
+    var cursor_image: stbi.Image = try .loadFromMemory(@embedFile("cursor.png"), 4);
     defer cursor_image.deinit();
     if (cursor_image.width > std.math.maxInt(u16) or cursor_image.height > std.math.maxInt(u16))
         return error.CursorTooLarge;
@@ -60,16 +58,16 @@ pub fn main() !void {
     for (0..cursor_image.data.len / 4) |i|
         std.mem.swap(u8, &cursor_image.data[i * 4], &cursor_image.data[i * 4 + 2]);
 
-    const wind_cursor: windy.Cursor = try .create(
+    const cursor: windy.Cursor = try .create(
         cursor_image.data,
         @intCast(cursor_image.width),
         @intCast(cursor_image.height),
         0,
         0,
     );
-    defer wind_cursor.destroy();
+    defer cursor.destroy();
 
-    try wind.setCursor(wind_cursor);
+    try wind.setCursor(cursor);
 
     try wind.registerResizeCb(resizeCb);
     try wind.registerMoveCb(moveCb);

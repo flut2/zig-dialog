@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -11,7 +10,7 @@ pub fn build(b: *std.Build) void {
             \\Whether to use GTK as the dialog provider on Linux / BSDs (requires GTK3 development headers).
             \\Zenity is used otherwise and assumed to exist on the computer running the program.
         ) orelse true,
-        .vulkan_support = b.option(bool, "vulkan_support", "Whether to provide utility functions for use with Vulkan.") orelse false,
+        .vulkan_support = b.option(bool, "vulkan_support", "Whether to load Vulkan as a dynamic library for `vulkanProcAddr()`.") orelse false,
     };
 
     const opt_step = b.addOptions();
@@ -28,10 +27,11 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    if (builtin.os.tag == .windows) if (b.lazyDependency("zigwin32", .{})) |dep|
+    //if (target.result.os.tag == .windows)
+    if (b.lazyDependency("zigwin32", .{})) |dep|
         mod.addImport("win32", dep.module("win32"));
 
-    if (builtin.os.tag == .linux or builtin.os.tag.isBSD()) {
+    if (target.result.os.tag == .linux or target.result.os.tag.isBSD()) {
         if (options.use_gtk) mod.linkSystemLibrary("gtk+-3.0", .{});
 
         if (options.use_wayland)

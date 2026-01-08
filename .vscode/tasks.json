@@ -12,9 +12,9 @@
             },
         },
         {
-            "label": "ReleaseFast",
+            "label": "Debug with Wine",
             "type": "shell",
-            "command": "zig build -Doptimize=ReleaseFast -freference-trace",
+            "command": "zig build -Dtarget=native-windows -Doptimize=Debug -freference-trace -fwine",
             "options": {
                 "cwd": "${workspaceFolder}/example"
             },

@@ -1,23 +1,14 @@
 {
-    "version": "0.2.0",
     "configurations": [
         {
+            "args": [],
+            "cwd": "${workspaceFolder}/example/zig-out/bin",
             "name": "Debug",
-            "type": "lldb",
-            "request": "launch",
+            "preLaunchTask": "Debug",
             "program": "${workspaceFolder}/example/zig-out/bin/Example",
-            "args": [],
-            "cwd": "${workspaceFolder}/example/zig-out/bin",
-            "preLaunchTask": "Debug"
-        },
-        {
-            "name": "ReleaseFast",
-            "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/example/zig-out/bin/Example",
-            "args": [],
-            "cwd": "${workspaceFolder}/example/zig-out/bin",
-            "preLaunchTask": "ReleaseFast"
+            "type": "lldb"
         },
-    ]
+    ],
+    "version": "0.2.0"
 }

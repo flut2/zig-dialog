@@ -1,6 +1,6 @@
 .{
     .name = .windy,
-    .version = "0.2.0",
+    .version = "0.3.0",
     .fingerprint = 0xa1fff25a0435b2c0,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{

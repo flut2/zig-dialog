@@ -42,11 +42,6 @@ pub fn openDialog(
     title: []const u8,
     default_path: ?[]const u8,
 ) !if (multiple_selection) []const []const u8 else []const u8 {
-    const init_res = win32.CoInitializeEx(null, .{ .APARTMENTTHREADED = 1, .DISABLE_OLE1DDE = 1 });
-    if (init_res != win32.RPC_E_CHANGED_MODE and win32.FAILED(init_res))
-        return error.ComInitFailed;
-    defer if (win32.SUCCEEDED(init_res)) win32.CoUninitialize();
-
     var dialog: *win32.IFileOpenDialog = undefined;
     if (win32.FAILED(win32.CoCreateInstance(
         win32.CLSID_FileOpenDialog,
@@ -130,11 +125,6 @@ pub fn saveDialog(
     title: []const u8,
     default_path: ?[]const u8,
 ) ![]const u8 {
-    const init_res = win32.CoInitializeEx(null, .{ .APARTMENTTHREADED = 1, .DISABLE_OLE1DDE = 1 });
-    if (init_res != win32.RPC_E_CHANGED_MODE and win32.FAILED(init_res))
-        return error.ComInitFailed;
-    defer if (win32.SUCCEEDED(init_res)) win32.CoUninitialize();
-
     var dialog: *win32.IFileSaveDialog = undefined;
     if (win32.FAILED(win32.CoCreateInstance(
         win32.CLSID_FileSaveDialog,
