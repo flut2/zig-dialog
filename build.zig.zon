@@ -9,6 +9,11 @@
             .hash = "zigwin32-25.0.28-preview-AAAAAICM5AMResOGQnQ85mfe60TTOQeMtt7GRATUOKoP",
             .lazy = true,
         },
+        .gobject = .{
+            .url = "https://github.com/ianprime0509/zig-gobject/releases/download/v0.3.1/bindings-gnome49.tar.zst",
+            .hash = "gobject-0.3.1-Skun7JC5fAFWOaM_zWo3XZAw7wPa6GYKK6U76Yy_Jkvt",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",

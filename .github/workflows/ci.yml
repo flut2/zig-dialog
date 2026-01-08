@@ -25,7 +25,7 @@ jobs:
         uses: mlugg/setup-zig@v2
       - name: Build
         working-directory: ./example
-        run: zig build
+        run: zig build -Drun_dialog_examples=true
   build-windows:
     runs-on: windows-latest
     steps:
@@ -35,4 +35,4 @@ jobs:
         uses: mlugg/setup-zig@v2
       - name: Build
         working-directory: ./example
-        run: zig build
+        run: zig build -Drun_dialog_examples=true

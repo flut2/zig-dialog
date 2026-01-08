@@ -4,6 +4,14 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
+    const options = .{
+        .run_dialog_examples = b.option(bool, "run_dialog_examples", "Whether to run the dialog examples.") orelse false,
+    };
+
+    const opt_step = b.addOptions();
+    inline for (@typeInfo(@TypeOf(options)).@"struct".fields) |field|
+        opt_step.addOption(field.type, field.name, @field(options, field.name));
+
     const stbi_dep = b.dependency("stbi", .{ .target = target, .optimize = optimize });
     const windy_dep = b.dependency("windy", .{
         .target = target,
@@ -18,6 +26,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
             .imports = &.{
+                .{ .name = "options", .module = opt_step.createModule() },
                 .{ .name = "windy", .module = windy_dep.module("windy") },
                 .{ .name = "stbi", .module = stbi_dep.module("root") },
             },

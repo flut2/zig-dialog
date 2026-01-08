@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const options = @import("options");
 const stbi = @import("stbi");
 const windy = @import("windy");
 
@@ -27,6 +28,48 @@ fn scrollCb(_: *windy.Window, delta_x: f32, delta_y: f32, mods: windy.Mods) void
     std.log.info("Mouse scroll with x={} y={}, mods: {}", .{ delta_x, delta_y, mods });
 }
 
+fn dialogExamples() !void {
+    const save_path = try windy.saveDialog(&.{
+        .{ .name = "Zig", .exts = &.{ "zig", "zon" } },
+        .{ .name = "Text", .exts = &.{ "txt", "pdf" } },
+    }, "Hello World", null);
+    defer windy.freeResult(save_path);
+    std.log.err("Save dialog path: {s}", .{save_path});
+
+    const open_path = try windy.openDialog(false, .file, &.{
+        .{ .name = "Zig", .exts = &.{ "zig", "zon" } },
+        .{ .name = "Text", .exts = &.{ "txt", "pdf" } },
+    }, "Hello World", null);
+    defer windy.freeResult(open_path);
+    std.log.err("Open dialog path: {s}", .{open_path});
+
+    const multi_path = try windy.openDialog(true, .file, &.{
+        .{ .name = "Zig", .exts = &.{ "zig", "zon" } },
+        .{ .name = "Text", .exts = &.{ "txt", "pdf" } },
+    }, "Hello World", null);
+    defer windy.freeResult(multi_path);
+    std.log.err("Multi open dialog paths: [", .{});
+    for (multi_path) |path| std.log.err("  {s}", .{path});
+    std.log.err("];", .{});
+
+    std.log.err("Info dialog result: {}", .{
+        try windy.message(.info, .yes_no, "Info dialog", "Info Title"),
+    });
+    std.log.err("Warning dialog result: {}", .{
+        try windy.message(.warn, .ok_cancel, "Warning dialog", "Warning Title"),
+    });
+    std.log.err("Error dialog result: {}", .{
+        try windy.message(.err, .ok, "Error dialog", "Error Title"),
+    });
+
+    const color_res = try windy.colorChooser(
+        .{ .r = 255, .g = 0, .b = 255, .a = 255 },
+        true,
+        "Color Chooser Test",
+    );
+    std.log.err("Color chooser result: #{X:0>6}", .{color_res.toColor()});
+}
+
 pub fn main() !void {
     var dbg_alloc: std.heap.DebugAllocator(.{ .stack_trace_frames = 10 }) = .init;
     defer _ = dbg_alloc.deinit();
@@ -44,6 +87,8 @@ pub fn main() !void {
     defer allocator.free(clip_buf);
     try windy.init(allocator, clip_buf);
     defer windy.deinit();
+
+    if (options.run_dialog_examples) try dialogExamples();
 
     const wind: *windy.Window = try .create(1280, 720, .{
         .back_pixel = .black,

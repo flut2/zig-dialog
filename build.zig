@@ -31,7 +31,11 @@ pub fn build(b: *std.Build) void {
         mod.addImport("win32", dep.module("win32"));
 
     if (target.result.os.tag == .linux or target.result.os.tag.isBSD()) {
-        if (options.use_gtk) mod.linkSystemLibrary("gtk+-3.0", .{});
+        if (options.use_gtk) if (b.lazyDependency("gobject", .{})) |gobject_dep| {
+            mod.addImport("gtk", gobject_dep.module("gtk3"));
+            mod.addImport("gdk", gobject_dep.module("gdk3"));
+            mod.addImport("glib", gobject_dep.module("glib2"));
+        };
 
         if (options.use_wayland)
             mod.linkSystemLibrary("wayland-client", .{})
