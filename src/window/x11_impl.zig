@@ -398,6 +398,8 @@ fn handleEvent(e: [*c]c.xcb_generic_event_t) !void {
                     continue;
                 }
 
+                if (offset + len > windy.clipboard_buffer.len) return error.OutOfMemory;
+
                 const data: [*]u8 = @ptrCast(c.xcb_get_property_value(reply) orelse return error.InvalidSelection);
                 @memcpy(windy.clipboard_buffer[offset..][0..len], data[0..len]);
                 offset += len;

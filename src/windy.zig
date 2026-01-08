@@ -95,7 +95,7 @@ pub fn setClipboard(new_buf: []const u8) !void {
     try wind_ns.setClipboard(new_buf);
 }
 
-pub fn vulkanProcAddr(comptime vk: type, _: vk.Instance, name: [*:0]const u8) vk.PfnVoidFunction {
+pub fn vulkanProcAddr(comptime vk: type, name: [*:0]const u8) vk.PfnVoidFunction {
     if (!options.vulkan_support) @compileError("Please enable Vulkan support with `-Dvulkan_support=true`");
     return vulkan_dyn_lib.lookup(vk.PfnVoidFunction, std.mem.span(name)) orelse null;
 }
@@ -264,6 +264,11 @@ pub const Window = struct {
                 surrogate: u16 = 0,
                 cursor: ?Cursor = null,
                 mods: Mods = .{},
+                min_size: Size = .invalid,
+                max_size: Size = .invalid,
+                resize_incr: Size = .invalid,
+                aspect_numerator: u16 = std.math.maxInt(u16),
+                aspect_denominator: u16 = std.math.maxInt(u16),
             },
             else => @compileError("Unsupported OS"),
         };
@@ -430,6 +435,10 @@ pub const Position = struct {
         .x = std.math.minInt(i16),
         .y = std.math.minInt(i16),
     };
+
+    pub fn eql(self: Position, other: Position) bool {
+        return self.x == other.x and self.y == other.y;
+    }
 };
 pub const Size = struct {
     w: u16,
@@ -439,6 +448,10 @@ pub const Size = struct {
         .w = std.math.maxInt(u16),
         .h = std.math.maxInt(u16),
     };
+
+    pub fn eql(self: Size, other: Size) bool {
+        return self.w == other.w and self.h == other.h;
+    }
 };
 
 pub const refreshCallback = *const fn (wind: *Window) void;

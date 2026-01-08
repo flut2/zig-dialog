@@ -27,8 +27,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    //if (target.result.os.tag == .windows)
-    if (b.lazyDependency("zigwin32", .{})) |dep|
+    if (target.result.os.tag == .windows) if (b.lazyDependency("zigwin32", .{})) |dep|
         mod.addImport("win32", dep.module("win32"));
 
     if (target.result.os.tag == .linux or target.result.os.tag.isBSD()) {

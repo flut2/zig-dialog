@@ -143,34 +143,94 @@ pub fn setCursor(wind: *windy.Window, cursor: windy.Cursor) !void {
 }
 
 pub fn setMinWindowSize(wind: *windy.Window, min_size: windy.Size) !void {
-    _ = wind; // autofix
-    _ = min_size; // autofix
+    wind.platform.min_size = min_size;
+    if (min_size.eql(.invalid)) return;
+
+    var area: win32.RECT = undefined;
+    _ = win32.GetWindowRect(@ptrFromInt(wind.id), &area);
+    _ = win32.MoveWindow(
+        @ptrFromInt(wind.id),
+        area.left,
+        area.top,
+        @max(min_size.w, area.right - area.left),
+        @max(min_size.h, area.bottom - area.top),
+        win32.TRUE,
+    );
 }
 
 pub fn setMaxWindowSize(wind: *windy.Window, max_size: windy.Size) !void {
-    _ = wind; // autofix
-    _ = max_size; // autofix
+    wind.platform.max_size = max_size;
+    if (max_size.eql(.invalid)) return;
+
+    var area: win32.RECT = undefined;
+    _ = win32.GetWindowRect(@ptrFromInt(wind.id), &area);
+    _ = win32.MoveWindow(
+        @ptrFromInt(wind.id),
+        area.left,
+        area.top,
+        @min(max_size.w, area.right - area.left),
+        @min(max_size.h, area.bottom - area.top),
+        win32.TRUE,
+    );
 }
 
 pub fn setWindowResizeIncr(wind: *windy.Window, incr_size: windy.Size) !void {
-    _ = wind; // autofix
-    _ = incr_size; // autofix
+    wind.platform.resize_incr = incr_size;
+    if (incr_size.eql(.invalid)) return;
+
+    var area: win32.RECT = undefined;
+    _ = win32.GetWindowRect(@ptrFromInt(wind.id), &area);
+    applyResizeIncr(wind, win32.WMSZ_BOTTOMRIGHT, &area);
+    _ = win32.MoveWindow(
+        @ptrFromInt(wind.id),
+        area.left,
+        area.top,
+        area.right - area.left,
+        area.bottom - area.top,
+        win32.TRUE,
+    );
 }
 
 pub fn setWindowAspect(wind: *windy.Window, numerator: u16, denominator: u16) !void {
-    _ = wind; // autofix
-    _ = numerator; // autofix
-    _ = denominator; // autofix
+    wind.platform.aspect_numerator = numerator;
+    wind.platform.aspect_denominator = denominator;
+    var area: win32.RECT = undefined;
+    _ = win32.GetWindowRect(@ptrFromInt(wind.id), &area);
+    applyAspect(wind, win32.WMSZ_BOTTOMRIGHT, &area);
+    _ = win32.MoveWindow(
+        @ptrFromInt(wind.id),
+        area.left,
+        area.top,
+        area.right - area.left,
+        area.bottom - area.top,
+        win32.TRUE,
+    );
 }
 
 pub fn resize(wind: *windy.Window, size: windy.Size) !void {
-    _ = wind; // autofix
-    _ = size; // autofix
+    var area: win32.RECT = undefined;
+    _ = win32.GetWindowRect(@ptrFromInt(wind.id), &area);
+    _ = win32.MoveWindow(
+        @ptrFromInt(wind.id),
+        area.left,
+        area.top,
+        size.w,
+        size.h,
+        win32.TRUE,
+    );
 }
 
 pub fn move(wind: *windy.Window, pos: windy.Position) !void {
-    _ = wind; // autofix
-    _ = pos; // autofix
+    var area: win32.RECT = undefined;
+    _ = win32.GetWindowRect(@ptrFromInt(wind.id), &area);
+    _ = win32.MoveWindow(
+        @ptrFromInt(wind.id),
+        pos.x,
+        pos.y,
+        area.right - area.left,
+        area.bottom - area.top,
+        win32.TRUE,
+    );
 }
 
 pub fn getClipboard() ![]const u8 {
@@ -260,7 +320,7 @@ pub fn waitEvent() !void {
 
 pub fn createSurface(comptime vk: type, wind: windy.Window, inst: vk.InstanceProxy) !vk.SurfaceKHR {
     const sci: vk.Win32SurfaceCreateInfoKHR = .{
-        .hinstance = win32_inst,
+        .hinstance = @ptrCast(win32_inst),
         .hwnd = @ptrFromInt(wind.id),
     };
     return try inst.createWin32SurfaceKHR(&sci, null);
@@ -475,14 +535,100 @@ fn windowProc(hwnd: win32.HWND, msg: u32, wp: win32.WPARAM, lp: win32.LPARAM) ca
             if (scancode == 0) scancode = win32.MapVirtualKeyW(@intCast(wp), win32.MAPVK_VK_TO_VSC);
             cb(wind, state, scancodeToKey(scancode), wind.platform.mods);
         },
+        win32.WM_SIZING => {
+            if (wind.platform.aspect_numerator != std.math.maxInt(u16) or
+                wind.platform.aspect_denominator != std.math.maxInt(u16))
+                applyAspect(wind, @intCast(wp), @ptrFromInt(@as(usize, @intCast(lp))));
+
+            if (!wind.platform.resize_incr.eql(.invalid))
+                applyResizeIncr(wind, @intCast(wp), @ptrFromInt(@as(usize, @intCast(lp))));
+
+            return win32.TRUE;
+        },
+        win32.WM_GETMINMAXINFO => {
+            var frame: win32.RECT = undefined;
+            _ = win32.AdjustWindowRectEx(&frame, wind.platform.style, win32.FALSE, wind.platform.ex_style);
+
+            var mmi: *win32.MINMAXINFO = @ptrFromInt(@as(usize, @intCast(lp)));
+            if (!wind.platform.min_size.eql(.invalid)) {
+                mmi.ptMinTrackSize.x = wind.platform.min_size.w + frame.right - frame.left;
+                mmi.ptMinTrackSize.y = wind.platform.min_size.h + frame.bottom - frame.top;
+            }
+
+            if (!wind.platform.max_size.eql(.invalid)) {
+                mmi.ptMaxTrackSize.x = wind.platform.max_size.w + frame.right - frame.left;
+                mmi.ptMaxTrackSize.y = wind.platform.max_size.h + frame.bottom - frame.top;
+            }
+
+            return 0;
+        },
         else => {},
     }
 
     return win32.DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-fn printError() void {
-    std.log.err("Win32 error: {f}", .{win32.GetLastError()});
+fn applyAspect(wind: *windy.Window, edge: i32, area: *win32.RECT) void {
+    const ratio = @as(f32, @floatFromInt(wind.platform.aspect_numerator)) /
+        @as(f32, @floatFromInt(wind.platform.aspect_denominator));
+
+    var frame: win32.RECT = undefined;
+    _ = win32.AdjustWindowRectEx(&frame, wind.platform.style, win32.FALSE, wind.platform.ex_style);
+
+    switch (edge) {
+        win32.WMSZ_LEFT, win32.WMSZ_BOTTOMLEFT, win32.WMSZ_RIGHT, win32.WMSZ_BOTTOMRIGHT => {
+            const w_delta: f32 = @floatFromInt((area.right - area.left) - (frame.right - frame.left));
+            area.bottom = area.top + (frame.bottom - frame.top) + @as(i32, @intFromFloat(w_delta / ratio));
+        },
+        win32.WMSZ_TOPLEFT, win32.WMSZ_TOPRIGHT => {
+            const w_delta: f32 = @floatFromInt((area.right - area.left) - (frame.right - frame.left));
+            area.top = area.bottom - (frame.bottom - frame.top) - @as(i32, @intFromFloat(w_delta / ratio));
+        },
+        win32.WMSZ_TOP, win32.WMSZ_BOTTOM => {
+            const h_delta: f32 = @floatFromInt((area.bottom - area.top) - (frame.bottom - frame.top));
+            area.right = area.left + (frame.right - frame.left) + @as(i32, @intFromFloat(h_delta * ratio));
+        },
+        else => {},
+    }
+}
+
+fn applyResizeIncr(wind: *windy.Window, edge: i32, area: *win32.RECT) void {
+    var frame: win32.RECT = undefined;
+    _ = win32.AdjustWindowRectEx(&frame, wind.platform.style, win32.FALSE, wind.platform.ex_style);
+
+    const dw = area.left - frame.left + frame.right - area.right;
+    const dh = area.top - frame.top + frame.bottom - area.bottom;
+    const w = area.right - area.left - dw;
+    const h = area.bottom - area.top - dh;
+    const iw = wind.platform.resize_incr.w;
+    const ih = wind.platform.resize_incr.h;
+    const iw_half = iw / 2;
+    const ih_half = ih / 2;
+    var w_dt = iw_half - @mod(w - (iw - iw_half), iw);
+    var h_dt = ih_half - @mod(h - (ih - ih_half), ih);
+    const total_w = w + w_dt;
+    const total_h = h + h_dt;
+    if (!wind.platform.min_size.eql(.invalid)) {
+        if (total_w < wind.platform.min_size.w) w_dt += wind.platform.min_size.w - total_w;
+        if (total_h < wind.platform.min_size.h) h_dt += wind.platform.min_size.h - total_h;
+    }
+
+    if (!wind.platform.max_size.eql(.invalid)) {
+        if (total_w > wind.platform.min_size.w) w_dt -= total_w - wind.platform.max_size.w;
+        if (total_h > wind.platform.min_size.h) h_dt -= total_h - wind.platform.max_size.h;
+    }
+
+    switch (edge) {
+        win32.WMSZ_LEFT, win32.WMSZ_BOTTOMLEFT, win32.WMSZ_TOPLEFT => area.left -= w_dt,
+        win32.WMSZ_RIGHT, win32.WMSZ_BOTTOMRIGHT, win32.WMSZ_TOPRIGHT => area.right += w_dt,
+        else => {},
+    }
+
+    switch (edge) {
+        win32.WMSZ_TOP, win32.WMSZ_TOPLEFT, win32.WMSZ_TOPRIGHT => area.top -= h_dt,
+        win32.WMSZ_BOTTOM, win32.WMSZ_BOTTOMLEFT, win32.WMSZ_BOTTOMRIGHT => area.bottom += h_dt,
+        else => {},
+    }
 }
 
 fn scancodeToKey(scancode: u32) windy.Key {
@@ -606,6 +752,10 @@ fn scancodeToKey(scancode: u32) windy.Key {
         0x04A => .kp_subtract,
         else => .invalid,
     };
+}
+
+fn printError() void {
+    std.log.err("Win32 error: {f}", .{win32.GetLastError()});
 }
 
 /// Equivalent of win32's `LOWORD`.
